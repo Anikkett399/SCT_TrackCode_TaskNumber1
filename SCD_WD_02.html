@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Animated Tic-Tac-Toe — PvP & Vs Computer</title>
+  <style>
+    :root {
+      --bg1: #0f1226;
+      --bg2: #1b2540;
+      --panel: rgba(255,255,255,0.06);
+      --grid: rgba(255,255,255,0.12);
+      --text: #e9eef7;
+      --muted: #a9b4cc;
+      --accent: #4ade80;
+      --red: #ef4444;
+      --green: #22c55e;
+      --shadow: 0 8px 20px rgba(0,0,0,.3);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: system-ui, sans-serif;
+      background: linear-gradient(135deg, var(--bg1), var(--bg2));
+      overflow-x: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .wrap { max-width: 420px; width: 100%; padding: 16px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+
+    h1 { margin: 0; font-size: 22px; }
+    .sub { margin: 4px 0 12px; color: var(--muted); font-size: 0.85rem; }
+
+    .controls { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .btn {
+      border: 1px solid var(--grid);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .btn[aria-pressed="true"] { border-color: var(--accent); }
+
+    .score { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
+    .pill { padding: 6px 8px; border-radius: 999px; background: rgba(255,255,255,.05); border: 1px solid var(--grid); text-align: center; font-size: 0.8rem; }
+
+    .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .cell {
+      aspect-ratio: 1/1;
+      display: grid;
+      place-content: center;
+      font-size: 26px;
+      border-radius: 10px;
+      border: 1px solid var(--grid);
+      cursor: pointer;
+      background: rgba(255,255,255,.05);
+    }
+    .cell:hover { border-color: var(--accent); }
+
+    .token { font-weight: 800; }
+    .x { color: var(--red); }
+    .o { color: var(--green); }
+
+    .cell.win { border-color: var(--accent); box-shadow: 0 0 6px var(--accent); }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      display: none; /* hidden by default */
+      place-items: center;
+      background: rgba(0,0,0,0.5);
+    }
+    .banner { background: var(--panel); padding: 14px 18px; border-radius: 10px; text-align: center; }
+    .banner h2 { margin: 0; font-size: 18px; }
+    .banner p { margin: 4px 0 10px; font-size: 0.85rem; }
+
+    footer { margin-top: 10px; color: var(--muted); font-size: .75rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Tic-Tac-Toe</h1>
+      <div class="sub">Play PvP or Vs Computer. X is <b style="color:var(--red)">Red</b>, O is <b style="color:var(--green)">Green</b>.</div>
+
+      <div class="controls">
+        <button id="pvpBtn" class="btn" aria-pressed="true">👥 PvP</button>
+        <button id="cpuBtn" class="btn" aria-pressed="false">🤖 Vs CPU</button>
+        <button id="swapBtn" class="btn">🔁 Swap</button>
+        <button id="resetBtn" class="btn">↩️ Reset</button>
+      </div>
+
+      <div class="score">
+        <div class="pill" id="turnPill">Turn: <span id="turnTxt">Red (X)</span></div>
+        <div class="pill">Red Wins: <span id="redWins">0</span></div>
+        <div class="pill">Green Wins: <span id="greenWins">0</span></div>
+      </div>
+
+      <div class="board" id="board"></div>
+      <footer>Vs CPU uses smart AI.</footer>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay">
+    <div class="banner">
+      <h2 id="bannerTitle">Winner!</h2>
+      <p id="bannerMsg"></p>
+      <button class="btn" id="playAgain">Play again</button>
+    </div>
+  </div>
+
+  <script>
+  const boardEl = document.getElementById('board');
+  const pvpBtn = document.getElementById('pvpBtn');
+  const cpuBtn = document.getElementById('cpuBtn');
+  const swapBtn = document.getElementById('swapBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const turnTxt = document.getElementById('turnTxt');
+  const redWinsEl = document.getElementById('redWins');
+  const greenWinsEl = document.getElementById('greenWins');
+  const overlay = document.getElementById('overlay');
+  const playAgain = document.getElementById('playAgain');
+  const bannerTitle = document.getElementById('bannerTitle');
+  const bannerMsg = document.getElementById('bannerMsg');
+
+  let board = Array(9).fill(null);
+  let xIsNext = true;
+  let gameOver = false;
+  let vsCpu = false;
+  let redWins = 0, greenWins = 0;
+
+  // Create cells and store references
+  const cellEls = [];
+  for (let i = 0; i < 9; i++) {
+    const c = document.createElement('button');
+    c.className = 'cell';
+    c.setAttribute('data-idx', i);
+    c.addEventListener('click', () => handleMove(i));
+    boardEl.appendChild(c);
+    cellEls.push(c);
+  }
+
+  const wins = [ [0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6] ];
+
+  function render(){
+    for (let i = 0; i < 9; i++) {
+      const cell = cellEls[i];
+      cell.innerHTML = '';
+      cell.classList.remove('win');
+      const val = board[i];
+      if(val){
+        const span = document.createElement('span');
+        span.className = 'token ' + (val === 'X' ? 'x' : 'o');
+        span.textContent = val;
+        cell.appendChild(span);
+      }
+      cell.disabled = gameOver || !!val || (vsCpu && !xIsNext);
+    }
+    if(!gameOver) turnTxt.textContent = xIsNext ? 'Red (X)' : 'Green (O)';
+  }
+
+  function checkWinner(b){
+    for(const [a, bIdx, c] of wins){
+      if(b[a] && b[a]===b[bIdx] && b[a]===b[c]) return {player:b[a], line:[a,bIdx,c]};
+    }
+    if(b.every(Boolean)) return {player:'Draw', line:[]};
+    return null;
+  }
+
+  function handleMove(i){
+    if(gameOver || board[i]) return;
+    board[i] = xIsNext ? 'X' : 'O';
+    xIsNext = !xIsNext;
+    render();
+    const res = checkWinner(board);
+    if(res) endGame(res);
+    else if(vsCpu && !xIsNext) cpuTurn();
+  }
+
+  function endGame(res){
+    gameOver = true;
+    if(res.player==='Draw'){ bannerTitle.textContent = "It's a Draw!"; bannerMsg.textContent = 'Try again!'; showOverlay(); return; }
+    res.line.forEach(idx => cellEls[idx].classList.add('win'));
+    if(res.player==='X') redWins++; else greenWins++;
+    redWinsEl.textContent = redWins; greenWinsEl.textContent = greenWins;
+    bannerTitle.textContent = res.player==='X' ? 'Red Wins!' : 'Green Wins!';
+    bannerMsg.textContent = res.player==='X' ? 'The board glows red.' : 'The board glows green.';
+    showOverlay();
+  }
+
+  function showOverlay(){ overlay.style.display = "grid"; }
+  function hideOverlay(){ overlay.style.display = "none"; }
+
+  function cpuTurn(){
+    setTimeout(() => {
+      const best = bestMove(board);
+      if(best.idx !== -1){
+        board[best.idx] = 'O';
+        xIsNext = true;
+        render();
+        const res = checkWinner(board);
+        if(res) endGame(res);
+      }
+    }, 300);
+  }
+
+  function bestMove(b){
+    if(b.filter(Boolean).length===0 && !b[4]) return {idx:4};
+    let best = { idx: -1, score: -Infinity };
+    for(let i=0;i<9;i++) if(!b[i]){
+      b[i] = 'O';
+      const score = minimax(b, false);
+      b[i] = null;
+      if(score > best.score){ best = { idx: i, score }; }
+    }
+    return best;
+  }
+
+  function minimax(b, isMax){
+    const res = checkWinner(b);
+    if(res){
+      if(res.player==='O') return 10;
+      if(res.player==='X') return -10;
+      return 0;
+    }
+    if(isMax){
+      let best = -999;
+      for(let i=0;i<9;i++) if(!b[i]){
+        b[i] = 'O';
+        best = Math.max(best, minimax(b, false));
+        b[i] = null;
+      }
+      return best;
+    } else {
+      let best = 999;
+      for(let i=0;i<9;i++) if(!b[i]){
+        b[i] = 'X';
+        best = Math.min(best, minimax(b, true));
+        b[i] = null;
+      }
+      return best;
+    }
+  }
+
+  function setMode(cpu){ vsCpu = cpu; pvpBtn.setAttribute('aria-pressed', String(!cpu)); cpuBtn.setAttribute('aria-pressed', String(cpu)); reset(false); }
+  pvpBtn.onclick = () => setMode(false);
+  cpuBtn.onclick = () => setMode(true);
+  swapBtn.onclick = () => { xIsNext = !xIsNext; render(); };
+  resetBtn.onclick = () => reset(true);
+  playAgain.onclick = () => { hideOverlay(); reset(false); };
+
+  function reset(hard){
+    board = Array(9).fill(null); gameOver = false; hideOverlay();
+    if(hard){ redWins = 0; greenWins = 0; redWinsEl.textContent = 0; greenWinsEl.textContent = 0; }
+    render();
+    if(vsCpu && !xIsNext){ cpuTurn(); }
+  }
+
+  render();
+  </script>
+</body>
+</html>
